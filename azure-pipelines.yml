@@ -1,0 +1,72 @@
+trigger:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  terraformVersion: '1.6.0'
+  workingDirectory: '$(System.DefaultWorkingDirectory)/terraform'
+
+stages:
+  - stage: Validate
+    displayName: 'Validate Code'
+    jobs:
+      - job: ValidateTerraform
+        steps:
+          - task: TerraformInstaller@0
+            inputs:
+              terraformVersion: $(terraformVersion)
+          
+          - script: |
+              cd $(workingDirectory)
+              terraform init
+              terraform validate
+            displayName: 'Terraform Validate'
+
+  - stage: Plan
+    displayName: 'Plan Infrastructure'
+    dependsOn: Validate
+    jobs:
+      - job: TerraformPlan
+        steps:
+          - task: TerraformInstaller@0
+            inputs:
+              terraformVersion: $(terraformVersion)
+          
+          - script: |
+              cd $(workingDirectory)
+              terraform init
+              terraform plan
+            displayName: 'Terraform Plan'
+
+  - stage: Deploy
+    displayName: 'Deploy Infrastructure'
+    dependsOn: Plan
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - deployment: DeployVM
+        environment: 'production'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                
+                - task: TerraformInstaller@0
+                  inputs:
+                    terraformVersion: $(terraformVersion)
+                
+                - script: |
+                    cd $(workingDirectory)
+                    terraform init
+                    terraform apply -auto-approve
+                  displayName: 'Terraform Apply'
+                
+                - task: Ansible@0
+                  inputs:
+                    playbookPathOnAgentMachine: '$(System.DefaultWorkingDirectory)/ansible/playbook.yml'
+                    inventoryType: 'inline'
+                  displayName: 'Run Ansible Playbook'
