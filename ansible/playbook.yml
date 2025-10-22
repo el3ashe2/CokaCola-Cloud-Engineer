@@ -1,0 +1,48 @@
+---
+- name: Configure Azure VM
+  hosts: all
+  become: yes
+  gather_facts: yes
+  
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+      when: ansible_os_family == "Debian"
+
+    - name: Install basic packages
+      apt:
+        name:
+          - curl
+          - wget
+          - git
+          - vim
+          - htop
+        state: present
+      when: ansible_os_family == "Debian"
+
+    - name: Create application directory
+      file:
+        path: /opt/myapp
+        state: directory
+        mode: '0755'
+
+    - name: Install Docker
+      apt:
+        name:
+          - docker.io
+        state: present
+      when: ansible_os_family == "Debian"
+
+    - name: Start Docker service
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Create deployment marker
+      copy:
+        content: "VM configured by Ansible on {{ ansible_date_time.iso8601 }}"
+        dest: /opt/myapp/deployment.txt
+        mode: '0644'
